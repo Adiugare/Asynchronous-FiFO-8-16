@@ -1,40 +1,88 @@
-module async_fifo_simple (
-    input wclk, rclk, rst,
-    input wr_en, rd_en,
-    input [15:0] in,
-    output reg [15:0] out,
-    output empty, full
+`timescale 1ns/1ps
+
+module async_fifo_simple(
+    input wclk,
+    input rclk,
+    input rst,
+    input wr_en,
+    input rd_en,
+    input [15:0] din,
+    output reg [15:0] dout,
+    output full,
+    output empty
 );
 
-reg [15:0] mem[7:0];
-reg [3:0] wptr, rptr;
-integer i;
+reg [15:0] mem [0:7];
 
-// WRITE DOMAIN
-always @(posedge wclk or posedge rst) begin
-    if (rst) begin
+// Write and Read pointers
+reg [3:0] wptr;
+reg [3:0] rptr;
+
+// Pointer synchronizers
+reg [3:0] wptr_sync1, wptr_sync2;
+reg [3:0] rptr_sync1, rptr_sync2;
+
+//////////////////////
+// Write Logic
+//////////////////////
+
+always @(posedge wclk or posedge rst)
+begin
+    if(rst)
         wptr <= 0;
-        for (i=0; i<8; i=i+1)
-            mem[i] <= 0;
-    end else if (wr_en && !full) begin
-        mem[wptr[2:0]] <= in;
+    else if(wr_en && !full)
+    begin
+        mem[wptr[2:0]] <= din;
         wptr <= wptr + 1;
     end
 end
 
-// READ DOMAIN
-always @(posedge rclk or posedge rst) begin
-    if (rst) begin
+//////////////////////
+// Read Logic
+//////////////////////
+
+always @(posedge rclk or posedge rst)
+begin
+    if(rst)
+    begin
         rptr <= 0;
-        out  <= 0;
-    end else if (rd_en && !empty) begin
-        out <= mem[rptr[2:0]];
+        dout <= 0;
+    end
+    else if(rd_en && !empty)
+    begin
+        dout <= mem[rptr[2:0]];
         rptr <= rptr + 1;
     end
 end
 
-assign empty = (wptr == rptr);
-assign full  = (wptr[3] != rptr[3]) &&
-               (wptr[2:0] == rptr[2:0]);
+//////////////////////
+// Synchronize Read Pointer
+//////////////////////
+
+always @(posedge wclk)
+begin
+    rptr_sync1 <= rptr;
+    rptr_sync2 <= rptr_sync1;
+end
+
+//////////////////////
+// Synchronize Write Pointer
+//////////////////////
+
+always @(posedge rclk)
+begin
+    wptr_sync1 <= wptr;
+    wptr_sync2 <= wptr_sync1;
+end
+
+//////////////////////
+// Status Flags
+//////////////////////
+
+assign empty = (wptr_sync2 == rptr);
+
+assign full =
+    (wptr[3] != rptr_sync2[3]) &&
+    (wptr[2:0] == rptr_sync2[2:0]);
 
 endmodule
